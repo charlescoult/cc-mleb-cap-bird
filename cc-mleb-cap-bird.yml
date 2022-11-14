@@ -1,0 +1,13 @@
+name: cc-mleb-cap-bird
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - kaggle
+  - nb_conda_kernels
+  - jupyterlab
+  - python=3.10
+  - librosa
+  - pandas
+  - pyarrow
+prefix: /home/charlescoult/.conda/envs/cc-mleb-cap-bird
