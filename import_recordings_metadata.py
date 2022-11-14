@@ -49,9 +49,15 @@ def collect_area(area):
 
 def save_parquet( recordings_df, filename ):
     print(f'Saving parquet: {filename}, {recordings_df.shape}')
-    recordings_df.to_parquet(filename)
-    verify_df = pd.read_parquet(filename)
-    print(f'Verify parquet: {verify_df.shape}')
+    # recordings_df.to_parquet(filename)
+    print( recordings_df.shape )
+    loaded_df = pd.read_parquet(filename)
+    print( loaded_df.shape )
+    loaded_df = pd.concat( loaded_df, recordings_df )
+    loaded_df.to_parquet(filename)
+    # verify_df = pd.read_parquet(filename)
+    # print(f'Verify parquet: {verify_df.shape}')
+
 
 def main():
     recordings_df = pd.DataFrame()
