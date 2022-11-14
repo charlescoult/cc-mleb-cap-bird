@@ -53,7 +53,7 @@ def save_parquet( recordings_df, filename ):
     print( recordings_df.shape )
     loaded_df = pd.read_parquet(filename)
     print( loaded_df.shape )
-    loaded_df = pd.concat( loaded_df, recordings_df )
+    loaded_df = pd.concat( [ loaded_df, recordings_df ] )
     loaded_df.to_parquet(filename)
     # verify_df = pd.read_parquet(filename)
     # print(f'Verify parquet: {verify_df.shape}')
