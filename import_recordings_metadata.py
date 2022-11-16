@@ -29,7 +29,7 @@ def query_recordings(query_str):
     print(f'Species: {r_json["numSpecies"]}')
 
     # generate a pandas df to store recording metadata as we go
-    recordings_df = pd.DataFrame(r_json['recordings'])
+    recordings_df = pd.DataFrame(r_json['recordings'], index='id')
 
     # go through each page and compile a list of recordings
     for page_num in tqdm(range(2, num_pages + 1)):
@@ -38,7 +38,7 @@ def query_recordings(query_str):
         r_json = requests.get(query).json()
         recordings_df = pd.concat( [
             recordings_df,
-            pd.DataFrame(r_json['recordings'])
+            pd.DataFrame(r_json['recordings'], index='id')
             ] )
 
     return recordings_df
