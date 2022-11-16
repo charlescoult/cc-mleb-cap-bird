@@ -1,4 +1,5 @@
 import os, sys
+import datetime
 import requests
 import json
 import pandas as pd
@@ -13,8 +14,14 @@ areas = [
         'europe',
         ]
 
+parquet_fn = 'recordings_metadata.par'
+
 # rate limit of 1 request per second - no point in making async
 api_url = 'https://www.xeno-canto.org/api/2/recordings'
+
+def convert_dtypes( df ):
+    df['id'] = pd.to_numeric(df['id'])
+    df['uploaded'] = pd.to_datetime(df['uploaded'])
 
 def query_recordings(query_str):
 
@@ -30,15 +37,20 @@ def query_recordings(query_str):
 
     # generate a pandas df to store recording metadata as we go
     recordings_df = pd.DataFrame(r_json['recordings'], index='id')
+    recordings_df = convert_dtypes(recordings_df)
 
     # go through each page and compile a list of recordings
     for page_num in tqdm(range(2, num_pages + 1)):
         page_var = '&page=' + str(page_num)
         query = api_url + query_var + page_var
         r_json = requests.get(query).json()
+
+        new_recordings_df = pd.DataFrame(r_json['recordings'], index='id')
+        new_recordings_df = convert_dtypes(recordings_df)
+
         recordings_df = pd.concat( [
             recordings_df,
-            pd.DataFrame(r_json['recordings'], index='id')
+            new_recordings_df
             ] )
 
     return recordings_df
@@ -49,23 +61,35 @@ def collect_area(area):
 
 def save_parquet( recordings_df, filename ):
     print(f'Saving parquet: {filename}, {recordings_df.shape}')
-    # recordings_df.to_parquet(filename)
+
     print( recordings_df.shape )
     loaded_df = pd.read_parquet(filename)
+
     print( loaded_df.shape )
     loaded_df = pd.concat( [ loaded_df, recordings_df ] )
     loaded_df.to_parquet(filename)
-    # verify_df = pd.read_parquet(filename)
-    # print(f'Verify parquet: {verify_df.shape}')
 
 
 def main():
-    recordings_df = pd.DataFrame()
+
+    run_datetime = datetime.now()
+
+    # open parquet file if it exists
+    try:
+        recordings_df = pd.read_parquet(recordings_fn)
+    except FileNotFoundError:
+        recordings_df = pd.DataFrame()
+
+    # find the latest upload date in parquet
+    recordings_df
+
     for area in areas:
         area_data = collect_area(area)
         area_data['area'] = area
+        area_data['imported'] = run_datetime
+
         recordings_df = pd.concat( [recordings_df, area_data] )
-        save_parquet( recordings_df , 'recordings_metadata.par')
+        save_parquet( recordings_df , recordings_fn)
 
 if __name__ == '__main__':
     try:
