@@ -1,11 +1,17 @@
 import os, sys
-import datetime
+from datetime import datetime
+from datetime import timedelta
 import requests
 import json
 import pandas as pd
 from tqdm import tqdm
 
+import dataflow
+
+# IT WILL NOT BE EFFECIENT AND THAT IS OK.
+
 stage_prefix = '00'
+data_fn = dataflow.get_fn(stage_prefix)
 
 # query_str='cnt:brazil'
 areas = [
@@ -16,10 +22,12 @@ areas = [
         'europe',
         ]
 
-parquet_fn = 'recordings_metadata.par'
-
 # rate limit of 1 request per second - no point in making async
 api_url = 'https://www.xeno-canto.org/api/2/recordings'
+
+def convert_dtypes():
+    # todo: use a schema
+    df['uploaded'] = pd.to_datetime(df['uploaded'])
 
 def query_recordings(query_str):
 
@@ -53,41 +61,32 @@ def query_recordings(query_str):
 
     return recordings_df
 
-def collect_area(area):
+def collect_area( area, from_dt=datetime.min, to_dt=datetime.max ):
     print('Collecting: ' + area)
     return query_recordings(f'area:{area}')
 
-def save_parquet( recordings_df, filename ):
-    print(f'Saving parquet: {filename}, {recordings_df.shape}')
+def save_parquet( df, filename ):
+    print(f'Saving parquet: {filename}, {df.shape}')
 
-    print( recordings_df.shape )
-    loaded_df = pd.read_parquet(filename)
-
-    print( loaded_df.shape )
-    loaded_df = pd.concat( [ loaded_df, recordings_df ] )
-    loaded_df.to_parquet(filename)
-
+    df.to_parquet(filename)
 
 def main():
 
-    run_datetime = datetime.now()
-
     # open parquet file if it exists
     try:
-        recordings_df = pd.read_parquet(recordings_fn)
+        df = pd.read_parquet(data_fn)
+        # find the latest upload date in parquet
+        latest = df['uploaded'].max()
+        print("Parquet file found. Latest date in parquet is: " + latest.strftime("%m/%d/%Y") )
     except FileNotFoundError:
-        recordings_df = pd.DataFrame()
-
-    # find the latest upload date in parquet
-    recordings_df
+        df = pd.DataFrame()
 
     for area in areas:
-        area_data = collect_area(area)
+        area_data = collect_area(area, to_dt = latest - timedelta(day=1) )
         area_data['area'] = area
-        area_data['imported'] = run_datetime
 
-        recordings_df = pd.concat( [recordings_df, area_data] )
-        save_parquet( recordings_df , recordings_fn)
+        df = pd.concat( [df, area_data] )
+        save_parquet( df , data_fn)
 
 if __name__ == '__main__':
     try:
