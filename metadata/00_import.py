@@ -97,7 +97,7 @@ def query_recordings(query_str):
     recs_df = make_recs_df( res['recordings'] )
 
     # go through each page and compile a list of recordings
-    for page_num in tqdm(range(2, num_pages + 1)):
+    for page_num in tqdm(range(2, num_pages + 1), unit='page'):
         page_var = '&page=' + str(page_num)
         query = api_url + query_var + page_var
 
@@ -110,13 +110,15 @@ def query_recordings(query_str):
     return recs_df
 
 def collect_area( area, since_dt = None ):
+    print()
     print('Collecting: ' + area)
     query_params = f'area:{area}' 
+
+    # since_dt = pd.Timestamp.now() - pd.Timedelta( days = 300 )
 
     if since_dt:
         query_params += '%20since:' + since_dt.strftime("%Y-%m-%d")
 
-    print()
 
     return query_recordings(query_params)
 
@@ -134,7 +136,7 @@ def main():
         latest = df['uploaded'].max()
         print("Parquet file found. Latest date in parquet is: " + latest.strftime("%m/%d/%Y") )
         # start search 1 day before latest date
-        start_dt = latest - pd.Timedelta(days=1)
+        start_dt = latest - pd.Timedelta( days = 1 )
 
     except FileNotFoundError:
         df = pd.DataFrame()
@@ -145,14 +147,14 @@ def main():
         area_df['area'] = area
 
         # combine dfs and save progress
-        df = pd.concat( [df, area_df] ).drop_duplicates( ['id'] )
+        df = combine_recs_dfs([ df, area_df ])
         save_parquet( df , data_fn)
 
 if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print('\nInterrupted')
+        print('\nProgram, interrupted.')
         try:
             sys.exit(1)
         except SystemExit:
