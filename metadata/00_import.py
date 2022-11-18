@@ -8,7 +8,17 @@ from tqdm import tqdm
 
 import dataflow
 
-# IT WILL NOT BE EFFECIENT AND THAT IS OK.
+# IT WILL NOT BE EFFICIENT AND THAT IS OK.
+
+# # API data inconsistencies:
+# Some recordings will be considered a part of multiple areas (continents)
+
+# >>> df.loc[['524398']]
+#               gen        sp ssp  group               en        rec               cnt  ... temp regnr auto dvc mic    smp       area
+# id                                                                                    ...
+# 524398  Casuarius  bennetti      birds  Dwarf Cassowary  Todd Mark  Papua New Guinea  ...              no          48000       asia
+# 524398  Casuarius  bennetti      birds  Dwarf Cassowary  Todd Mark  Papua New Guinea  ...              no          48000  australia
+
 
 stage_prefix = '00'
 data_fn = dataflow.get_fn(stage_prefix)
@@ -25,45 +35,90 @@ areas = [
 # rate limit of 1 request per second - no point in making async
 api_url = 'https://www.xeno-canto.org/api/2/recordings'
 
-def convert_dtypes():
+def convert_dtypes( df ):
     # todo: use a schema
     df['uploaded'] = pd.to_datetime(df['uploaded'])
+
+    return df
+
+# makes a cleanly formatted df from a query result
+def make_recs_df( recs_list ):
+
+    recs_df = pd.DataFrame( recs_list )
+
+    # set up index to be id as an int
+    recs_df['id'] = recs_df['id'].astype(int)
+    recs_df = recs_df.set_index('id')
+
+    # convert any other types according to schema
+    recs_df = convert_dtypes( recs_df )
+
+    # because this is comming from a query body, there should be no duplicate id
+    # otherwise API has unexpected behaviour that needs to be looked into
+    assert not recs_df.index.has_duplicates, f"Error generating df: source list has duplicate ids"
+
+    return recs_df
+
+# combines (concats) dfs and drops duplicate ids
+def combine_recs_dfs( recs_list ):
+
+    df = pd.concat( recs_list )
+
+    # drop any duplicate ids (records listed in multiple 'area's)
+    df = df[ ~ df.index.duplicated() ]
+    # assert not df.index.has_duplicates
+
+    return df
+
+def call_API( query ):
+    # query and parse text result to json
+    res = requests.get(query).json()
+    # assert no error returned
+    assert 'error' not in res, f"API call error: {res['error']} - {res['message']}"
+    return res
 
 def query_recordings(query_str):
 
     query_var='?query=' + query_str
-    query = api_url + query_var
 
-    r = requests.get(query)
-    r_json = r.json()
-    num_pages = r_json['numPages']
+    query = api_url + query_var
+    print(query)
+
+    res = call_API( query )
+
+    num_pages = res['numPages']
+
     print(f'Pages: {num_pages}')
-    print(f'Recordings: {r_json["numRecordings"]}')
-    print(f'Species: {r_json["numSpecies"]}')
+    print(f'Recordings: {res["numRecordings"]}')
+    print(f'Species: {res["numSpecies"]}')
 
     # generate a pandas df to store recording metadata as we go
-    recordings_df = pd.DataFrame(r_json['recordings'], index='id')
-    recordings_df = convert_dtypes(recordings_df)
+    
+    recs_df = make_recs_df( res['recordings'] )
 
     # go through each page and compile a list of recordings
     for page_num in tqdm(range(2, num_pages + 1)):
         page_var = '&page=' + str(page_num)
         query = api_url + query_var + page_var
-        r_json = requests.get(query).json()
 
-        new_recordings_df = pd.DataFrame(r_json['recordings'], index='id')
-        new_recordings_df = convert_dtypes(recordings_df)
+        res = call_API( query )
 
-        recordings_df = pd.concat( [
-            recordings_df,
-            new_recordings_df
-            ] )
+        new_recs_df = make_recs_df( res['recordings'] )
 
-    return recordings_df
+        recs_df = combine_recs_dfs( [ recs_df, new_recs_df ] )
 
-def collect_area( area, from_dt=datetime.min, to_dt=datetime.max ):
+    return recs_df
+
+def collect_area( area, since_dt = None ):
     print('Collecting: ' + area)
-    return query_recordings(f'area:{area}')
+    query_params = f'area:{area}' 
+
+    if since_dt:
+        query_params += '%20since:' + since_dt.strftime("%Y-%m-%d")
+
+    print()
+
+    return query_recordings(query_params)
 
 def save_parquet( df, filename ):
     print(f'Saving parquet: {filename}, {df.shape}')
@@ -78,14 +133,19 @@ def main():
         # find the latest upload date in parquet
         latest = df['uploaded'].max()
         print("Parquet file found. Latest date in parquet is: " + latest.strftime("%m/%d/%Y") )
+        # start search 1 day before latest date
+        start_dt = latest - pd.Timedelta(days=1)
+
     except FileNotFoundError:
         df = pd.DataFrame()
+        start_dt = None
 
     for area in areas:
-        area_data = collect_area(area, to_dt = latest - timedelta(day=1) )
-        area_data['area'] = area
+        area_df = collect_area( area, start_dt )
+        area_df['area'] = area
 
-        df = pd.concat( [df, area_data] )
+        # combine dfs and save progress
+        df = pd.concat( [df, area_df] ).drop_duplicates( ['id'] )
         save_parquet( df , data_fn)
 
 if __name__ == '__main__':
