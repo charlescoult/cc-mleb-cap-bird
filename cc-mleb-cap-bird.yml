@@ -10,4 +10,5 @@ dependencies:
   - librosa
   - pandas
   - pyarrow
+  - pandera
 prefix: /home/charlescoult/.conda/envs/cc-mleb-cap-bird
