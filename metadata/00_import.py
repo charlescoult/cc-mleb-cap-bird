@@ -44,7 +44,10 @@ def convert_dtypes( df ):
 # makes a cleanly formatted df from a query result
 def make_recs_df( recs_list ):
 
-    recs_df = pd.DataFrame( recs_list )
+    # recs_df = pd.DataFrame( recs_list )
+    # Use pd.json_normalize instead of DataFrame() in order
+    # to flatten nested dicts
+    recs_df = pd.json_normalize( recs_list )
 
     # set up index to be id as an int
     recs_df['id'] = recs_df['id'].astype(int)
@@ -93,7 +96,7 @@ def query_recordings(query_str):
     print(f'Species: {res["numSpecies"]}')
 
     # generate a pandas df to store recording metadata as we go
-    
+
     recs_df = make_recs_df( res['recordings'] )
 
     # go through each page and compile a list of recordings
@@ -112,18 +115,25 @@ def query_recordings(query_str):
 def collect_area( area, since_dt = None ):
     print()
     print('Collecting: ' + area)
+
     query_params = f'area:{area}' 
 
+    # for some reason adding this to query returns 0 results
+    # query_params += '%20group:birds'
+
+    # for testing:
     # since_dt = pd.Timestamp.now() - pd.Timedelta( days = 300 )
 
     if since_dt:
         query_params += '%20since:' + since_dt.strftime("%Y-%m-%d")
 
-
     return query_recordings(query_params)
 
 def save_parquet( df, filename ):
     print(f'Saving parquet: {filename}, {df.shape}')
+
+    # remove any non-birds (grasshoppers)
+    df = df[df['group'] == 'birds']
 
     df.to_parquet(filename)
 
@@ -134,7 +144,8 @@ def main():
         df = pd.read_parquet(data_fn)
         # find the latest upload date in parquet
         latest = df['uploaded'].max()
-        print("Parquet file found. Latest date in parquet is: " + latest.strftime("%m/%d/%Y") )
+        print("Parquet file found.")
+        print("Latest date in parquet is: " + latest.strftime("%m/%d/%Y") )
         # start search 1 day before latest date
         start_dt = latest - pd.Timedelta( days = 1 )
 
